@@ -1,0 +1,5 @@
+result1.txt是仅通过RNN生成诗歌的训练过程
+
+result2.txt是改进完善后的诗歌生成训练过程
+
+generated_poetry.txt是输入”七月流火”生成的藏头诗
