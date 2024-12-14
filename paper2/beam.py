@@ -111,11 +111,11 @@ class PoetryBeam(object):
         for beam_id, word_id, score in zip(beam_ids, word_ids, scores):
             #print (beam_idx, word_idx, score)
             state = states[beam_id, :].unsqueeze(0) # (1, H)
-            new_states = self.__hypotheses[beam_id].states + [state]
+            new_mutable_states = self.__hypotheses[beam_id].mutable_states + [state]
 
             new_candidate = self.__hypotheses[beam_id].candidate + [word_id]
 
-            hypo = Hypothesis(new_candidate, new_states, score)
+            hypo = Hypothesis(new_candidate, new_mutable_states, score)
 
             if word_id == self.__E_ID:
                 self.__completed_hypotheses.append(hypo)
@@ -126,49 +126,29 @@ class PoetryBeam(object):
 
 
     def __beam_select(self, log_probs, position):
-        # log_probs: (B, V)
         B, V = log_probs.shape[0], log_probs.shape[1]
 
-        current_scores = [hypo.score for hypo in self.__hypotheses]
-        current_scores = np.reshape(current_scores, (B, 1))
-
+        current_scores = np.array([hypo.score for hypo in self.__hypotheses]).reshape(B, 1)
 
         if position == 0:
-            costs = - log_probs[0, :].reshape(1, V) # (1, V)
+            costs = -log_probs[0, :].reshape(1, V)  # (1, V)
         else:
-            costs = current_scores - log_probs # (B, V)
+            costs = current_scores - log_probs  # (B, V)
 
-        # filter with rhythm, rhyme and length
         filter_v = 1e5
-
         costs[:, self.__UNK_ID] = filter_v
-
-        # filter eos symbol
         if position < self.__length:
             costs[:, self.__E_ID] = filter_v
 
-        # restrain the model from generating chars
-        #   that already generated in previous lines
         costs[:, self.__repetitive_ids] = filter_v
-
-        # restrain in-line repetitive chars
         inline_filter_ids = self.inline_filter(position)
-        for i in range(0, costs.shape[0]):
+        for i in range(B):
             costs[i, inline_filter_ids[i]] = filter_v
 
-
-        # for the tail char, filter out non-rhyme chars
-        if (self.__rhyme != -1) and (position == self.__length-1):
+        if (self.__rhyme != -1) and (position == self.__length - 1):
             filter_ids = list(set(range(0, V)) - set(self.__rhyme_cids))
             costs[:, filter_ids] = filter_v
 
-
-        '''
-        filter out chars of the undesired tone
-        NOTE: since some Chinese characters may belong to both tones,
-            here we only consider the non-overlap ones
-        TODO: disambiguation
-        '''
         if position < self.__length and len(self.__rhythms) > 0:
             pos_rhythm = self.__rhythms[position]
             if pos_rhythm == 0:  # level tone
@@ -176,20 +156,15 @@ class PoetryBeam(object):
             elif pos_rhythm == 1:  # oblique
                 costs[:, self.__level_cids] = filter_v
 
-        flat_costs = costs.flatten() # (B*V)
-
-        # idx of the smallest B elements
-        best_indices = np.argpartition(
-            flat_costs, B)[0:B].copy()
-
+        flat_costs = costs.flatten()  # (B*V)
+        best_indices = np.argpartition(flat_costs, B)[0:B].copy()
         scores = flat_costs[best_indices]
 
-        # get beam id and word id
-        beam_ids = [int(idx //  V) for idx in best_indices]
+        beam_ids = [int(idx // V) for idx in best_indices]
         word_ids = [int(idx % V) for idx in best_indices]
 
         if position == 0:
-            beam_ids = list(range(0, B))
+            beam_ids = list(range(B))
 
         return beam_ids, word_ids, scores
 
