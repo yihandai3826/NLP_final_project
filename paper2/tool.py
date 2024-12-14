@@ -3,6 +3,8 @@ import numpy as np
 import random
 import copy
 import torch
+from config import device
+from concurrent.futures import ProcessPoolExecutor
 
 # 定义函数 readPickle，用于从指定路径读取 pickle 文件，并返回文件内容。import pickle
 
@@ -226,17 +228,46 @@ class Tool(object):
         :param mode: 模式，包括分类预训练、去噪自编码器预训练和MixPoet训练。
         """
         assert mode in ['cl1', 'cl2', 'dae', 'mixpoet_pre', 'mixpoet_tune']
-        train_data = readPickle(train_data_path)
-        valid_data = readPickle(valid_data_path)
 
-        print (len(train_data))
-        print (len(valid_data))
+        # 读取数据
+        with open(train_data_path, 'rb') as f:
+            train_data = pickle.load(f)
+        with open(valid_data_path, 'rb') as f:
+            valid_data = pickle.load(f)
 
-        self.train_batches = self.__build_data_core(train_data, batch_size, mode)
-        self.valid_batches = self.__build_data_core(valid_data, batch_size, mode)
+        print(len(train_data))
+        print(len(valid_data))
+
+        # 使用ProcessPoolExecutor进行并行处理
+        def build_batches(data, batch_size, mode):
+            return self.__build_data_core(data, batch_size, mode)
+
+        with ProcessPoolExecutor() as executor:
+            future_train = executor.submit(build_batches, train_data, batch_size, mode)
+            future_valid = executor.submit(build_batches, valid_data, batch_size, mode)
+
+            self.train_batches = future_train.result()
+            self.valid_batches = future_valid.result()
 
         self.train_batch_num = len(self.train_batches)
         self.valid_batch_num = len(self.valid_batches)
+
+    def __build_data_core(self, data, batch_size, mode):
+        """
+        核心数据构建函数。
+        
+        :param data: 数据列表。
+        :param batch_size: 批次大小。
+        :param mode: 模式。
+        """
+        # 根据mode构建不同的数据批次
+        if mode == 'cl1' or mode == 'cl2':
+            return self.build_classifier_batches(data, batch_size, mode)
+        elif mode == 'dae':
+            return self.build_dae_batches(data, batch_size)
+        elif mode == 'mixpoet_pre' or mode == 'mixpoet_tune':
+            return self.build_mixpoet_batches(data, batch_size, mode)
+
 
     def __build_data_core(self, data, batch_size, mode, data_limit=None):
         """
