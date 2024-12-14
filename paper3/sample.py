@@ -6,11 +6,6 @@ import numpy as np
 from model import PoetryModel
 import torch
 
-# add 忽略警告
-import warnings
-warnings.filterwarnings("ignore")
-
-
 class Sample(object):
     def __init__(self):
         self.config = Config()
@@ -26,7 +21,6 @@ class Sample(object):
 
     def load_data(self):
         if os.path.exists(self.processed_data_path):
-            # data = np.load(self.processed_data_path)
             data = np.load(self.processed_data_path, allow_pickle=True)  # 设置 allow_pickle=True 以允许加载包含对象的数组
             self.data, self.word_to_ix, self.ix_to_word = data['data'], data['word2ix'].item(), data['ix2word'].item()
 
@@ -42,7 +36,7 @@ class Sample(object):
         model.to(self.device)
         self.model = model
 
-    def generate_random(self, start_words='<START>'):
+    def generate_random(self, start_words='<START>', nmf_topic_vector=None):
         """自由生成一首诗歌"""
         poetry = []
         sentence_len = 0
@@ -53,6 +47,9 @@ class Sample(object):
         for i in range(self.max_len):
             # 前向计算出概率最大的当前词
             output, hidden = self.model.forward(input, hidden)
+            entropy = self.model.calculate_entropy(output)
+            if nmf_topic_vector is not None and torch.mean(entropy).item() > self.config.entropy_threshold:
+                output = self.model.adjust_output_with_nmf(output, nmf_topic_vector)
             top_index = output[0].argmax().item()
             char = self.ix_to_word[top_index]
 
@@ -70,9 +67,9 @@ class Sample(object):
             input = (torch.Tensor([top_index]).view(1, 1).long()).to(self.device)
             poetry.append(char)
 
-        return poetry
+        return ''.join(poetry)
 
-    def generate_head(self, head_sentence):
+    def generate_head(self, head_sentence, nmf_topic_vector=None):
         """生成藏头诗"""
         poetry = []
         head_char_len = len(head_sentence)  # 要生成的句子的数量
@@ -86,6 +83,9 @@ class Sample(object):
         for i in range(self.max_len):
             # 前向计算出概率最大的当前词
             output, hidden = self.model.forward(input, hidden)
+            entropy = self.model.calculate_entropy(output)
+            if nmf_topic_vector is not None and torch.mean(entropy).item() > self.config.entropy_threshold:
+                output = self.model.adjust_output_with_nmf(output, nmf_topic_vector)
             top_index = output[0].argmax().item()
             char = self.ix_to_word[top_index]
 
@@ -103,9 +103,9 @@ class Sample(object):
             poetry.append(char)
             pre_char = char
 
-        return poetry
+        return ''.join(poetry)
 
-    def generate_poetry(self, mode=1, head_sentence=None):
+    def generate_poetry(self, mode=1, head_sentence=None, nmf_topic_vector=None):
         """
         模式一：随机生成诗歌
         模式二：生成藏头诗
@@ -114,17 +114,17 @@ class Sample(object):
         """
         poetry = ''
         if mode == 1 or (mode == 2 and head_sentence is None):
-            poetry = ''.join(self.generate_random())
-        if mode == 2 and head_sentence is not None:
-            head_sentence = head_sentence.replace(',', u'，').replace('.', u'。').replace('?', u'？')
-            poetry = ''.join(self.generate_head(head_sentence))
+            poetry = self.generate_random(nmf_topic_vector=nmf_topic_vector)
+        elif mode == 2 and head_sentence is not None:
+            head_sentence = head_sentence.replace(',', '，').replace('.', '。').replace('?', '？')
+            poetry = self.generate_head(head_sentence, nmf_topic_vector=nmf_topic_vector)
 
         return poetry
 
-    def generate_samples(self, num_samples):
+    def generate_samples(self, num_samples, nmf_topic_vector=None):
         samples = []
         for _ in range(num_samples):
-            sample = self.generate_poetry(mode=1)  # 或者其他模式，根据您的需求
+            sample = self.generate_poetry(nmf_topic_vector=nmf_topic_vector)
             samples.append(sample)
         return samples
 
@@ -138,7 +138,6 @@ if __name__ == '__main__':
     poetry = obj.generate_poetry(mode=2, head_sentence="七月流火")
     print(poetry)
 
-    # add
     # 将生成的诗歌保存到本地文件
     with open("./generated_poetry.txt", "w", encoding="utf-8") as file:
         file.write(poetry)
