@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import random
+import math
 
 class Attention(nn.Module):
     def __init__(self, hidden_dim):
@@ -66,7 +67,6 @@ class PoetryModel(nn.Module):
         # 创建一个dropout层
         self.dropout = nn.Dropout(0.2)
 
-   
     def forward(self, inputs, targets, teacher_forcing_ratio=0.5, nmf_topic_vector=None):
         batch_size = inputs.size(0)
         target_len = targets.size(1)
@@ -90,7 +90,7 @@ class PoetryModel(nn.Module):
 
         # 逐时间步解码
         for t in range(1, target_len + 1):
-            decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden, encoder_outputs)
+            decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden, encoder_outputs, nmf_topic_vector)
             decoder_output = decoder_output[:, -1, :]  # 取最后一个时间步的输出
 
             # 决定是否使用teacher forcing
@@ -112,3 +112,16 @@ class PoetryModel(nn.Module):
         # 返回两个3D张量，形状为 (num_layers, batch_size, hidden_size)
         return (torch.zeros(layer_num, batch_size, self.hidden_dim).to(self.device),
                 torch.zeros(layer_num, batch_size, self.hidden_dim).to(self.device))
+
+    def calculate_entropy(self, output):
+        # 计算熵
+        prob = F.softmax(output, dim=1)
+        entropy = -torch.sum(prob * torch.log(prob + 1e-10), dim=1)  # 避免对0取对数
+        return entropy
+
+    def adjust_output_with_nmf(self, output, nmf_topic_vector):
+        # 根据NMF主题向量调整输出概率分布
+        topic_weights = torch.matmul(output, nmf_topic_vector.T)
+        topic_weights = F.softmax(topic_weights, dim=1)
+        adjusted_output = output + topic_weights
+        return adjusted_output
