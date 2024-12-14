@@ -4,13 +4,23 @@ import random
 import copy
 import torch
 
-# 定义函数 readPickle，用于从指定路径读取 pickle 文件，并返回文件内容。
+# 定义函数 readPickle，用于从指定路径读取 pickle 文件，并返回文件内容。import pickle
+
 def readPickle(data_path):
-    corpus_file = open(data_path, 'rb')    
-    # 使用 pickle 模块的 load 函数从文件中加载数据。
-    corpus = pickle.load(corpus_file)    
-    corpus_file.close()
-    return corpus
+    try:
+        corpus_file = open(data_path, 'rb')
+        # 使用 pickle 模块的 load 函数从文件中加载数据。
+        corpus = pickle.load(corpus_file)
+        corpus_file.close()
+        return corpus
+    except FileNotFoundError:
+        print(f"Error: The file {data_path} was not found.")
+    except pickle.UnpicklingError:
+        print(f"Error: Failed to unpickle the file {data_path}.")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+    # Return None or raise the exception after logging, depending on how you want to handle it.
+    return None
 
 class Tool(object):
 
