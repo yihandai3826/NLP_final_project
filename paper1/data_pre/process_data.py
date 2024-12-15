@@ -12,7 +12,7 @@ class QwenModel:
         self.temperature = temperature
 
         self.client = OpenAI(
-            api_key="sk-9488a84020dc42d5a194d066ef43972b",
+            api_key="",
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
         )
 
