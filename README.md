@@ -7,3 +7,6 @@
 
 ## Paper 2
 - 数据集超出100MB上传不成功
+
+## Paper 3
+- 古诗词数据来自于https://github.com/chinese-poetry/chinese-poetry
